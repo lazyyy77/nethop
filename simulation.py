@@ -4,25 +4,30 @@ from message import Message
 from constants import TOPIC_TYPES
 import asyncio
 import networkx as nx
+import time
 
 class SimulationEngine:
-    def __init__(self, environment: SocialEnvironment, max_message_batch: int = 10, message_source: int = 10):
+    def __init__(self, environment: SocialEnvironment, max_message_batch: int = 10, message_source: int = 5):
         self.environment = environment
         self.max_message_batch = max_message_batch
         self.message_source = message_source
         self.shared_balance = SharedBalance(total=self.max_message_batch - len(self.environment.agents))
+        # track how many times each node (by int id) has been visited/activated
+        self.visit_counts = {}
         print(f"Initialized SimulationEngine with max_message_batch={self.max_message_batch}, message_source={self.message_source}, SharedBalance={self.shared_balance.remain}")
 
     async def run_simulation(self):
         step = 0
         active_agent = []
+        # record total simulation start time
+        t_start = time.perf_counter()
         while True:
             print(f"-------- Step {step} --------")
             # print(self.environment.output_event())
             # self.environment.agents[str(step)].printAgent()
             if step == 0:
-                g = self.environment.graph()
-                selected_vertex = [n for n, d in sorted(g.out_degree(), key=lambda t: t[1], reverse=True)[:self.message_source]]
+                g = self.environment.graph
+                selected_vertex = g.get_chain_heads()
                 print(f"Selected vertices for posting messages: {selected_vertex}")
                 first_ts_agents = []
                 event = self.environment.output_event()
@@ -34,15 +39,30 @@ class SimulationEngine:
                 for i in first_ts_agents:
                     if results[first_ts_agents.index(i)][0]:
                         id = int(i.agent_id)
-                        dst = self.shortest_out_edge_id(self.environment.graph(), id, 0)
+                        dst = self.shortest_out_edge_id(self.environment.graph, id, 0)
                         if dst is not None:
-                            active_agent.append(self.environment.agents.get(str(dst)))
+                            agent_obj = self.environment.agents.get(str(dst))
+                            if agent_obj is not None and agent_obj not in active_agent:
+                                active_agent.append(agent_obj)
+                            # increment visit count for the selected node
+                            try:
+                                did = int(dst)
+                            except Exception:
+                                did = dst
+                            self.visit_counts[did] = self.visit_counts.get(did, 0) + 1
                     if results[first_ts_agents.index(i)][1] or self.shared_balance.remain > 0:
-                        self.shared_balance.try_consume(1)
+                        await self.shared_balance.try_consume(1)
                         id = int(i.agent_id)
-                        dst = self.shortest_out_edge_id(self.environment.graph(), id, 1)
+                        dst = self.shortest_out_edge_id(self.environment.graph, id, 1)
                         if dst is not None:
-                            active_agent.append(self.environment.agents.get(str(dst)))
+                            agent_obj = self.environment.agents.get(str(dst))
+                            if agent_obj is not None and agent_obj not in active_agent:
+                                active_agent.append(agent_obj)
+                            try:
+                                did = int(dst)
+                            except Exception:
+                                did = dst
+                            self.visit_counts[did] = self.visit_counts.get(did, 0) + 1
             else:
                 if not active_agent:
                     print("No more active agents to process. Ending simulation.")
@@ -55,58 +75,72 @@ class SimulationEngine:
                         continue
                     if results[current_agents.index(i)][0]:
                         id = int(i.agent_id)
-                        dst = self.shortest_out_edge_id(self.environment.graph(), id, 0)
+                        dst = self.shortest_out_edge_id(self.environment.graph, id, 0)
                         if dst is not None:
-                            active_agent.append(self.environment.agents.get(str(dst)))
+                            agent_obj = self.environment.agents.get(str(dst))
+                            if agent_obj is not None and agent_obj not in active_agent:
+                                active_agent.append(agent_obj)
+                            try:
+                                did = int(dst)
+                            except Exception:
+                                did = dst
+                            self.visit_counts[did] = self.visit_counts.get(did, 0) + 1
                     if results[current_agents.index(i)][1] or self.shared_balance.remain > 0:
-                        self.shared_balance.try_consume(1)
+                        await self.shared_balance.try_consume(1)
                         id = int(i.agent_id)
-                        dst = self.shortest_out_edge_id(self.environment.graph(), id, 1)
+                        dst = self.shortest_out_edge_id(self.environment.graph, id, 1)
                         if dst is not None:
-                            active_agent.append(self.environment.agents.get(str(dst)))
-            
+                            agent_obj = self.environment.agents.get(str(dst))
+                            if agent_obj is not None and agent_obj not in active_agent:
+                                active_agent.append(agent_obj)
+                            try:
+                                did = int(dst)
+                            except Exception:
+                                did = dst
+                            self.visit_counts[did] = self.visit_counts.get(did, 0) + 1
             step += 1
+            print(len(self.visit_counts))
             if step >= 20:
                 break
-            # # Generate some events randomly
-            # if random.random() > 0.5:
-            #     topic = random.choice(TOPIC_TYPES)
-            #     event = self.environment.generate_event(topic, f"Event about {topic}")
-            #     # Send to random active agent
-            #     if self.environment.agents:
-            #         active_agent_id = random.choice(list(self.environment.agents.keys()))
-            #         message = Message(active_agent_id, event.content, 'post', event=event)
-            #         self.environment.distribute_message(message)
 
-            # message_feed = self.environment.get_message_feed()
+        all_time = time.perf_counter() - t_start
+        all_num = sum(self.visit_counts.values())
+        print(f"[Node {all_num}][Time {all_time:.4f}][Avg {all_time / all_num if all_num > 0 else 0:.6f}]")
 
-            # for agent_id, agent in self.environment.agents.items():
-            #     relevant_messages = agent.perceive(message_feed)
-            #     for msg in relevant_messages:
-            #         agent.update_state(msg)
-
-            #     behavior = agent.act()
-            #     if behavior:
-            #         if behavior['type'] == 'post':
-            #             new_message = Message(agent_id, behavior['content'], 'post')
-            #             self.environment.distribute_message(new_message)
-            #         elif behavior['type'] == 'comment':
-            #             new_message = Message(agent_id, behavior['content'], 'comment')
-            #             self.environment.distribute_message(new_message)
-            #         # Handle like and forward similarly (could be extended)
-
-            # Clear message pool for next step (simplified)
-            # self.environment.message_pool = []
-
-    def shortest_out_edge_id(g: nx.DiGraph, node_id, order):
+    def shortest_out_edge_id(self, g: nx.DiGraph, node_id, order):
+        """
+        Return the successor of `node_id` ordered by edge weight at index `order`,
+        but skip any successor whose corresponding agent/node has been visited
+        two times or more (according to self.visit_counts). If not enough
+        eligible successors exist, return None.
+        """
         if node_id not in g or g.out_degree(node_id) == 0:
             return None
-        return sorted(g.successors(node_id),
-                    key=lambda v: g[node_id][v]['weight'])[order]
+
+        # sort successors by edge weight (ascending)
+        successors = sorted(g.successors(node_id), key=lambda v: g[node_id][v].get('weight', 0))
+
+        # filter out successors that have been visited >= 2 times
+        eligible = []
+        for v in successors:
+            # node ids in graph might be ints; use int for visit_counts keys
+            try:
+                vid = int(v)
+            except Exception:
+                vid = v
+            if self.visit_counts.get(vid, 0) >= 2:
+                # skip this successor
+                continue
+            eligible.append(v)
+
+        if order < 0 or order >= len(eligible):
+            return None
+
+        return eligible[order]
 
 
     def postMessage(self, source: int = 10):
-        g = self.environment.graph()
+        g = self.environment.graph
         selected_vertex = [n for n, d in sorted(g.out_degree(), key=lambda t: t[1], reverse=True)[:source]]
         print(f"Selected vertices for posting messages: {selected_vertex}")
         first_ts_agents = []

@@ -2,28 +2,56 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import pandas as pd
 import random
+from typing import Optional, Dict, List
+
 
 class Graph:
-    def __init__(self, vertex):
-        self.v = vertex
-        self.g = nx.read_edgelist('twitter_combined.txt',
-                                 create_using=nx.DiGraph,
-                                 nodetype=int)
-        self.graph = self.g.subgraph(list(self.g.nodes)[:self.v]).copy()
-        # 重新为子图的节点编号，从 0 开始
-        # 使用排序后的节点列表以保证结果可复现；如果你希望按照原始迭代顺序编号，
-        # 可以把 sorted(self.graph.nodes()) 换成 list(self.graph.nodes())
-        old_nodes = sorted(self.graph.nodes())
-        self.node_mapping = {old: new for new, old in enumerate(old_nodes)}
-        # 采用就地重命名以避免复制整个图（如果你想保留原图，请设置 copy=True）
-        nx.relabel_nodes(self.graph, self.node_mapping, copy=False)
-        self.e = self.graph.number_of_edges()
-        # 为每条边随机分配一个权重，范围 1-10，保存在边属性 'weight' 中
-        for u, v in self.graph.edges():
-            self.graph[u][v]['weight'] = random.randint(1, 10)
-        nx.draw(self.graph, with_labels=True)
-        # plt.show()
+    def __init__(self, m: int, n: int, seed: Optional[int] = None):
+        """
+        手工构造 m 条长度为 n 的链状有向图。
+        节点编号 0..m*n-1，第 i 条链的节点为 i*n .. i*n+(n-1)。
+        每条边随机赋权 1-10（可复现）。
+        同时在节点属性中存下后续第 1、2、3 个节点编号（next1, next2, next3）。
+        """
+        self.m = m
+        self.n = n
+        self.seed = seed
+        if seed is not None:
+            random.seed(seed)
 
+        self.graph = nx.DiGraph()
+        total_nodes = m * n
+        self.graph.add_nodes_from(range(total_nodes))
+
+        for i in range(m):
+            base = i * n
+            for j in range(n - 1):
+                u, v = base + j, base + j + 1
+                self.graph.add_edge(u, v, weight=random.randint(1, 10))
+
+        # 存后续 1、2、3 个节点编号
+        for node in self.graph.nodes:
+            succ = list(self.graph.successors(node))
+            attrs = {
+                'next1': succ[0] if len(succ) >= 1 else None,
+                'next2': succ[1] if len(succ) >= 2 else None,
+                'next3': succ[2] if len(succ) >= 3 else None,
+            }
+            nx.set_node_attributes(self.graph, {node: attrs})
+
+        self.v = self.graph.number_of_nodes()
+        self.e = self.graph.number_of_edges()
+
+        nx.draw(self.graph, with_labels=True)
+        plt.savefig("graph.jpg")
+
+    # —— 下面方法与旧代码完全一致，直接复用 —— #
+    def compute_hop_distances(self) -> Dict[int, Dict[int, int]]:
+        return {src: dict(lens) for src, lens in nx.all_pairs_shortest_path_length(self.graph)}
+
+    # —— 新增接口：返回 m 条链的头节点编号 —— #
+    def get_chain_heads(self) -> List[int]:
+        return [i * self.n for i in range(self.m)]
 
 def graph_report(G, name=''):
     print(f'====== {name} 文字体检表 ======')
@@ -97,7 +125,8 @@ def simulate_propagation(G, m=3):
     print(f"最终激活: {len(activated)}/{total} 节点 ({(len(activated)/total*100) if total>0 else 0:.2f}%)")
 
 if __name__ == "__main__":
-    n = int(input())
-    print(f"Creating graph with {n} nodes...")
-    G = Graph(vertex=n).graph
-    simulate_propagation(G, m=10)
+    m = int(input("请输入链的数量 m: "))
+    n = int(input("请输入每条链的长度 n: "))
+    print(f"Creating graph with {m} chains {n} lengths")
+    gobj = Graph(m=m, n=n)
+    print(gobj.get_chain_heads())

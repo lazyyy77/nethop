@@ -28,6 +28,7 @@ class Agent:
         self.persona = None
         self.background_story = None
         self.topics = None
+        self.recv_time = 0
         
         self.llm = OpenAILLM()
 
@@ -67,26 +68,7 @@ class Agent:
         print(f"Age: {self.age}")
         print(f"Prefix: {self.prompt}")
 
-    def act(self) -> Optional[Dict[str, Any]]:
-        """
-        Produce a simple behavior dictionary. This is a placeholder; you can
-        expand it to use persona, emotion, topics, etc.
-        """
-        behaviors = ['like', 'forward', 'comment', 'generate_new_content']
-        behavior = random.choice(behaviors)
-
-        if behavior == 'like':
-            return {'type': 'like', 'message_id': None, 'agent_id': self.agent_id}
-        elif behavior == 'forward':
-            return {'type': 'forward', 'message_id': None, 'agent_id': self.agent_id}
-        elif behavior == 'comment':
-            content = f"Comment by {getattr(self, 'persona', self.name or self.agent_id)}"
-            return {'type': 'comment', 'content': content, 'agent_id': self.agent_id}
-        elif behavior == 'generate_new_content':
-            topic = random.choice(TOPIC_TYPES) if 'TOPIC_TYPES' in globals() else 'general'
-            return {'type': 'post', 'content': f"New post about {topic} by {getattr(self, 'persona', self.name or self.agent_id)}", 'topic': topic, 'agent_id': self.agent_id}
-
-    async def run(self, event: Event, shared_balance, llm) -> Tuple[bool, bool]:
+    async def run(self, event: Event, shared_balance) -> Tuple[bool, bool]:
 
 
         prefix = self.prompt
@@ -97,25 +79,68 @@ class Agent:
             + "Do you want to spread (forward/like/retweet) this event? "
             + "Answer only 'yes' or 'no'."
         )
-        forward = (await self.llm.acomplete(prompt1)).lower() == "yes"
+        forward = (await self.llm.acomplete(prompt1, agent_id=str(self.agent_id))).lower() == "yes"
+        print(f"Agent {self.agent_id} forward decision: {forward}")
         if not forward:
             return False, False
-
-        if not await shared_balance.try_consume(1):
-            return True, False
 
         prompt2 = (
             prefix
             + f"Here is a social-media event:\n{event}\n"
             + "What's your attitude towards this event now?"
         )
+
+        attitude = await self.llm.acomplete(prompt2, agent_id=str(self.agent_id))
+        print(f"Agent {self.agent_id} attitude")
         
-        attitude = await self.llm.acomplete(prompt2)
+        # self.topics[event.topic_type] = attitude
         
-        self.topics[event.topic_type] = attitude
+        if shared_balance is not None:
+            if not await shared_balance.try_consume(1):
+                return True, False
         
         return True, True
                 
 
     def __repr__(self):
         return f"Agent(id={self.agent_id}, name={getattr(self, 'name', None)}, persona={getattr(self, 'persona', None)})"
+
+    async def test_agent(self):
+        event = Event(content="Test event for agent warming.", topic_type="Technology Privacy")
+        prompt1 = (
+            self.prompt
+            + f"Here is a social-media event:\n{event}\n"
+            + "Do you want to spread (forward/like/retweet) this event? "
+            + "Answer only 'yes' or 'no'."
+        )
+        self.llm.acomplete(prompt1, agent_id=str(self.agent_id))
+
+if __name__ == "__main__":
+    print("Testing Agent...")
+    profile = {
+        "name": "Alice",
+        "age": 30,
+        "gender": "Female",
+        "persona": "A friendly and curious individual who loves to explore new ideas.",
+        "background_story": "Alice grew up in a small town and moved to the city to pursue her dreams.",
+        "topics": {
+            "Gender Discrimination": "Firmly believes in treating everyone with respect and fairness, regardless of gender.",
+            "Climate Change": "Deeply worried about the environmental impact and its effect on communities worldwide.",
+            "Racial Discrimination": "Strongly opposes any form of discrimination and promotes unity among people of all races.",
+            "Technology Privacy": "Concerned about the misuse of personal information and advocates for strong privacy protections.",
+            "Economic Inequality": "Supports fair distribution of resources and believes in helping those less fortunate."
+        }
+    }
+    agent = Agent(agent_id="1", profile=profile)
+    agent.printAgent()
+    agent.llm = OpenAILLM()
+    event = Event(
+        content="New breakthrough in AI technology announced!",
+        topic_type="Technology Privacy"
+    )
+    async def test():
+        await agent.run(event, shared_balance=None, llm=agent.llm)
+
+    asyncio.run(test())
+    
+    print("Agent test completed.")

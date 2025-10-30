@@ -10,12 +10,18 @@ import asyncio
 class SharedBalance:
     def __init__(self, total: int):
         self._remain = total
-        self._lock = asyncio.Lock()
+        # don't create an asyncio.Lock() here (can raise if no event loop);
+        # create it lazily inside the first async call where the loop exists
+        self._lock = None
     
     def reset(self, total: int):
         self._remain = total
 
     async def try_consume(self, n: int = 1) -> bool:
+        # lazily create the lock in coroutine context where an event loop exists
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
         async with self._lock:
             if self._remain >= n:
                 self._remain -= n

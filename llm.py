@@ -11,7 +11,7 @@ class OpenAILLM:
         base_url: str = "http://127.0.0.1:8001/v1",
         model: str = "Qwen/Qwen2.5-7B-Instruct",
         temperature: float = 0.7,
-        max_tokens: int = 1024,
+        max_tokens: int = 256,
         timeout: int = 5,
     ):
         self.base_url = base_url.rstrip("/")
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     async def test():
         llm = OpenAILLM()
         prompt = "Hello, how are you?"
-        response = await llm.acomplete(prompt)
+        response = await llm.acomplete(prompt, agent_id="-1")
         print("LLM Response:", response)
 
     asyncio.run(test())
