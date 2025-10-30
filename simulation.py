@@ -25,6 +25,7 @@ class SimulationEngine:
             print(f"-------- Step {step} --------")
             # print(self.environment.output_event())
             # self.environment.agents[str(step)].printAgent()
+            
             if step == 0:
                 g = self.environment.graph
                 selected_vertex = g.get_chain_heads()
@@ -37,32 +38,9 @@ class SimulationEngine:
                         first_ts_agents.append(agent)
                 results = await asyncio.gather(*(ag.run(event, self.shared_balance) for ag in first_ts_agents))
                 for i in first_ts_agents:
+                    self.visit_counts[int(i.agent_id)] = 1
                     if results[first_ts_agents.index(i)][0]:
-                        id = int(i.agent_id)
-                        dst = self.shortest_out_edge_id(self.environment.graph, id, 0)
-                        if dst is not None:
-                            agent_obj = self.environment.agents.get(str(dst))
-                            if agent_obj is not None and agent_obj not in active_agent:
-                                active_agent.append(agent_obj)
-                            # increment visit count for the selected node
-                            try:
-                                did = int(dst)
-                            except Exception:
-                                did = dst
-                            self.visit_counts[did] = self.visit_counts.get(did, 0) + 1
-                    if results[first_ts_agents.index(i)][1] or self.shared_balance.remain > 0:
-                        await self.shared_balance.try_consume(1)
-                        id = int(i.agent_id)
-                        dst = self.shortest_out_edge_id(self.environment.graph, id, 1)
-                        if dst is not None:
-                            agent_obj = self.environment.agents.get(str(dst))
-                            if agent_obj is not None and agent_obj not in active_agent:
-                                active_agent.append(agent_obj)
-                            try:
-                                did = int(dst)
-                            except Exception:
-                                did = dst
-                            self.visit_counts[did] = self.visit_counts.get(did, 0) + 1
+                        active_agent.append(next(self.environment.graph.successors(int(i.agent_id))))
             else:
                 if not active_agent:
                     print("No more active agents to process. Ending simulation.")
@@ -73,33 +51,11 @@ class SimulationEngine:
                 for i in current_agents:
                     if i is None:
                         continue
+                    self.visit_counts[int(i.agent_id)] = 1
                     if results[current_agents.index(i)][0]:
-                        id = int(i.agent_id)
-                        dst = self.shortest_out_edge_id(self.environment.graph, id, 0)
-                        if dst is not None:
-                            agent_obj = self.environment.agents.get(str(dst))
-                            if agent_obj is not None and agent_obj not in active_agent:
-                                active_agent.append(agent_obj)
-                            try:
-                                did = int(dst)
-                            except Exception:
-                                did = dst
-                            self.visit_counts[did] = self.visit_counts.get(did, 0) + 1
-                    if results[current_agents.index(i)][1] or self.shared_balance.remain > 0:
-                        await self.shared_balance.try_consume(1)
-                        id = int(i.agent_id)
-                        dst = self.shortest_out_edge_id(self.environment.graph, id, 1)
-                        if dst is not None:
-                            agent_obj = self.environment.agents.get(str(dst))
-                            if agent_obj is not None and agent_obj not in active_agent:
-                                active_agent.append(agent_obj)
-                            try:
-                                did = int(dst)
-                            except Exception:
-                                did = dst
-                            self.visit_counts[did] = self.visit_counts.get(did, 0) + 1
+                        active_agent.append(next(self.environment.graph.successors(int(i.agent_id))))
             step += 1
-            print(len(self.visit_counts))
+            print(self.visit_counts)
             if step >= 20:
                 break
 

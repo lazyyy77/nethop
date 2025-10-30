@@ -25,7 +25,7 @@ def main():
     print("=== Social Network Simulation System ===")
 
     # --- Graph Generation ---
-    total_agents = 500
+    total_agents = 100
     max_message_batch = 20
     G = Graph(m=max_message_batch, n=total_agents // max_message_batch)
     env = SocialEnvironment(graph=G.graph)
