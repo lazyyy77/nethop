@@ -28,7 +28,13 @@ class SimulationEngine:
             
             if step == 0:
                 g = self.environment.graph
-                selected_vertex = g.get_chain_heads()
+                # select candidate starting vertices. prefer nodes with in-degree 0 (chain heads);
+                # fall back to highest out-degree nodes if none found
+                heads = [n for n, d in g.in_degree() if d == 0]
+                if heads:
+                    selected_vertex = heads[:self.message_source]
+                else:
+                    selected_vertex = [n for n, d in sorted(g.out_degree(), key=lambda t: t[1], reverse=True)[:self.message_source]]
                 print(f"Selected vertices for posting messages: {selected_vertex}")
                 first_ts_agents = []
                 event = self.environment.output_event()
@@ -40,12 +46,15 @@ class SimulationEngine:
                 for i in first_ts_agents:
                     self.visit_counts[int(i.agent_id)] = 1
                     if results[first_ts_agents.index(i)][0]:
-                        active_agent.append(next(self.environment.graph.successors(int(i.agent_id))))
+                        # safely get the first successor (if any)
+                        succs = list(self.environment.graph.successors(int(i.agent_id)))
+                        if succs:
+                            active_agent.append(succs[0])
             else:
                 if not active_agent:
                     print("No more active agents to process. Ending simulation.")
                     break
-                current_agents = active_agent.copy()
+                current_agents = [self.environment.agents.get(str(nid)) for nid in active_agent]
                 active_agent = []
                 results = await asyncio.gather(*(ag.run(event, self.shared_balance) for ag in current_agents if ag is not None))
                 for i in current_agents:
@@ -53,7 +62,9 @@ class SimulationEngine:
                         continue
                     self.visit_counts[int(i.agent_id)] = 1
                     if results[current_agents.index(i)][0]:
-                        active_agent.append(next(self.environment.graph.successors(int(i.agent_id))))
+                        succs = list(self.environment.graph.successors(int(i.agent_id)))
+                        if succs:
+                            active_agent.append(succs[0])
             step += 1
             print(self.visit_counts)
             if step >= 20:

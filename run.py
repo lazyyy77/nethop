@@ -25,10 +25,10 @@ def main():
     print("=== Social Network Simulation System ===")
 
     # --- Graph Generation ---
-    total_agents = 100
-    max_message_batch = 20
+    total_agents = 50
+    max_message_batch = 10
     G = Graph(m=max_message_batch, n=total_agents // max_message_batch)
-    env = SocialEnvironment(graph=G.graph)
+    env = SocialEnvironment(graph=G)
 
     # Load agent profiles from agent_file.json
     with open('agent_file.json', 'r', encoding='utf-8') as f:

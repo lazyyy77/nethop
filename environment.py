@@ -34,7 +34,8 @@ class SharedBalance:
 
 class SocialEnvironment:
     def __init__(self, graph: nx.DiGraph = None):
-        self.graph = graph if graph is not None else nx.DiGraph()
+        self.Graph = graph if graph is not None else nx.DiGraph()
+        self.graph = graph.graph if graph.graph is not None else nx.DiGraph()
         self.agents: Dict[str, Agent] = {}
         self.message_pool: List[Message] = []
         self.event_pool: List[Event] = []
